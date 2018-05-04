@@ -1,6 +1,8 @@
 ﻿Shader "Custom/Tesseract" {
 	Properties {
-		_Color ("Color", Color) = (1,1,1,1)
+        _BaseColor ("Base Color", Color) = (1,1,1,1)
+        _MidColor ("Mid Color", Color) = (1,1,1,1)
+        _HighlightColor ("Highlight Color", Color) = (1,1,1,1)
 		_Glossiness ("Smoothness", Range(0,1)) = 0.5
 		_Metallic ("Metallic", Range(0,1)) = 0.0
         _Speed("Speed", Float) = 1
@@ -22,7 +24,9 @@
 
 		half _Glossiness;
 		half _Metallic;
-		fixed4 _Color;
+        fixed4 _BaseColor;
+        fixed4 _MidColor;
+        fixed4 _HighlightColor;
         float _Speed;
         float _Glow;
         float4 _Frequencies;
@@ -178,16 +182,17 @@
 
         void surf (Input IN, inout SurfaceOutputStandard o) {
             float d = length(IN.textureCoordinates.xyz);
-            float3 uvw = IN.textureCoordinates.xyz * 1.5;
-            float n1 = snoise(float4(uvw * _Frequencies.x, IN.textureCoordinates.w)) * _Weights.x + _Weights.x;
-            float n2 = snoise(float4(uvw * _Frequencies.y, IN.textureCoordinates.w)) * _Weights.y + _Weights.y;
-            float n3 = snoise(float4(uvw * _Frequencies.z, IN.textureCoordinates.w)) * _Weights.z + _Weights.z;
-            float n4 = snoise(float4(uvw * _Frequencies.w, IN.textureCoordinates.w)) * _Weights.w + _Weights.w;
-            float r = smoothstep(_Glow, 3.141, abs(acos(clamp(dot(-IN.viewDirection, normalize(uvw)), -1, 1)))) * 1.2 + 1;
-            float l = (n1 + n2 + n3 + n4) * r;
-            float low = clamp(l * 2.0, 0, 1);
-            float high = clamp(l * 2.0 - 1, 0, 1);
-			fixed4 c = lerp((0, 0, 0, 0), _Color, low) + lerp((0, 0, 0, 0), (1, 1, 1, 1), high);
+            float n = smoothstep(_Glow, 3.141, abs(acos(clamp(dot(-IN.viewDirection, normalize(IN.textureCoordinates.xyz)), -1, 1)))) * 0.6;
+            float frequency = 1.618;
+            float amplitude = 0.618;
+            for (int octave = 0; octave < 7; octave++)
+            {
+                n+= snoise(float4(IN.textureCoordinates * frequency)) * amplitude;
+                frequency *= 1.618;
+                amplitude *= 0.618;
+            }
+            float l = n / 2.618;
+			fixed4 c = lerp(_BaseColor, _MidColor, cos(clamp(abs(l - _Frequencies.x) * _Weights.x, 0, 1.5707))) + _HighlightColor * cos(clamp(abs(l - _Frequencies.y) * _Weights.y, 0, 1.5707));
 			// Metallic and smoothness come from slider variables
 			o.Metallic = _Metallic;
 			o.Smoothness = _Glossiness;
