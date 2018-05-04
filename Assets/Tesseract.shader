@@ -5,6 +5,8 @@
 		_Metallic ("Metallic", Range(0,1)) = 0.0
         _Speed("Speed", Float) = 1
         _Frequencies("Frequencies", Vector) = (2, 5, 11, 23)
+        _Weights("Weights", Vector) = (0.25, 0.125, 0.0625, 0.03125)
+        _Glow("Glow", Range(0,3.141)) = 0
         }
 
 	SubShader {
@@ -18,15 +20,13 @@
 		// Use shader model 3.0 target, to get nicer looking lighting
 		#pragma target 3.0
 
-		struct Input {
-            float4 my_uvw;
-		};
-
 		half _Glossiness;
 		half _Metallic;
 		fixed4 _Color;
         float _Speed;
+        float _Glow;
         float4 _Frequencies;
+        float4 _Weights;
 
         //
         // Description : Array and textureless GLSL 2D/3D/4D simplex 
@@ -165,24 +165,34 @@
 			// put more per-instance properties here
 		UNITY_INSTANCING_BUFFER_END(Props)
 
+        struct Input {
+            float4 textureCoordinates;
+            float3 viewDirection;
+        };
+
         void vert (inout appdata_full v, out Input o) {
             UNITY_INITIALIZE_OUTPUT(Input,o);
-            o.my_uvw = float4(v.vertex.xyz, _Time.x * _Speed);
+            o.viewDirection = normalize(ObjSpaceViewDir(normalize(v.vertex)));
+            o.textureCoordinates = float4(v.vertex.xyz, _Time.x * _Speed);
         }
 
         void surf (Input IN, inout SurfaceOutputStandard o) {
-			// Albedo comes from a texture tinted by color
-            float n = snoise(IN.my_uvw * _Frequencies.x) * 0.25;
-            float n2 = snoise(IN.my_uvw * _Frequencies.y) * 0.125 + 0.125;
-            float n3 = snoise(IN.my_uvw * _Frequencies.z) * 0.0625 + 0.0625;
-            float n4 = snoise(IN.my_uvw * _Frequencies.w) * 0.03125 + 0.03125;
-			fixed4 c = lerp(_Color, (1, 1, 1, 1), (0.25 + n + n2 + n3 + n4) * (2 - length(IN.my_uvw.xyz) * 2));
-			//o.Albedo = c.rgb;
+            float d = length(IN.textureCoordinates.xyz);
+            float3 uvw = IN.textureCoordinates.xyz * 1.5;
+            float n1 = snoise(float4(uvw * _Frequencies.x, IN.textureCoordinates.w)) * _Weights.x + _Weights.x;
+            float n2 = snoise(float4(uvw * _Frequencies.y, IN.textureCoordinates.w)) * _Weights.y + _Weights.y;
+            float n3 = snoise(float4(uvw * _Frequencies.z, IN.textureCoordinates.w)) * _Weights.z + _Weights.z;
+            float n4 = snoise(float4(uvw * _Frequencies.w, IN.textureCoordinates.w)) * _Weights.w + _Weights.w;
+            float r = smoothstep(_Glow, 3.141, abs(acos(clamp(dot(-IN.viewDirection, normalize(uvw)), -1, 1)))) * 1.2 + 1;
+            float l = (n1 + n2 + n3 + n4) * r;
+            float low = clamp(l * 2.0, 0, 1);
+            float high = clamp(l * 2.0 - 1, 0, 1);
+			fixed4 c = lerp((0, 0, 0, 0), _Color, low) + lerp((0, 0, 0, 0), (1, 1, 1, 1), high);
 			// Metallic and smoothness come from slider variables
 			o.Metallic = _Metallic;
 			o.Smoothness = _Glossiness;
             o.Emission = c.rgb;
-			o.Alpha = _Color.a;
+			o.Alpha = c.a;
 		}
 		ENDCG
 	}
